@@ -6,7 +6,7 @@ const S = window.supabase.createClient(
 );
 
 const B = "photos";
-const SECURE_UPLOAD_FUNCTION = "secure-upload";
+const SECURE_UPLOAD_FUNCTION = "Secure-upload";
 
 const STORAGE_QUOTA = 5 * 1024 * 1024 * 1024; // 5 GB display quota
 const MAX_FILE_SIZE = 50 * 1024 * 1024; // 50 MB per file
