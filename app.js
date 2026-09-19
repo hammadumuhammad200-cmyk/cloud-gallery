@@ -1,16 +1,61 @@
-const C=window.CLOUD_GALLERY_CONFIG,S=window.supabase.createClient(C.SUPABASE_URL,C.SUPABASE_PUBLISHABLE_KEY),B="photos";let user,photos=[];
-const $=x=>document.getElementById(x),toast=x=>{let t=$("toast");t.textContent=x;t.className="show";setTimeout(()=>t.className="",3000)};
-function loginView(){$("login").classList.remove("hide");$("signup").classList.add("hide");$("reset").classList.add("hide")}function signupView(){$("login").classList.add("hide");$("signup").classList.remove("hide");$("reset").classList.add("hide")}function resetView(){$("login").classList.add("hide");$("signup").classList.add("hide");$("reset").classList.remove("hide")}
-async function login(e){e.preventDefault();let{error}=await S.auth.signInWithPassword({email:$("le").value,password:$("lp").value});if(error)toast(error.message)}
-async function signup(e){e.preventDefault();let{error}=await S.auth.signUp({email:$("se").value,password:$("sp").value});if(error)toast(error.message);else{toast("Account created. Check your email if confirmation is enabled.");loginView()}}
-async function resetPassword(e){e.preventDefault();let{error}=await S.auth.resetPasswordForEmail($("re").value,{redirectTo:location.href});if(error)toast(error.message);else{toast("Reset email sent.");loginView()}}
-async function logout(){await S.auth.signOut()}
-async function session(x){user=x?.user||null;$("auth").classList.toggle("hide",!!user);$("app").classList.toggle("hide",!user);if(user){$("email").textContent=user.email||"";await load()}}
-async function load(){let{data,error}=await S.from("photos").select("*").eq("user_id",user.id).order("created_at",{ascending:false});if(error)return toast(error.message);photos=data||[];render()}
-async function render(){let q=$("search").value.toLowerCase(),c=$("cat").value,list=photos.filter(p=>(c==="All"||p.category===c)&&p.original_name.toLowerCase().includes(q));$("count").textContent=photos.length+" "+(photos.length===1?"Photo":"Photos");$("empty").classList.toggle("hide",list.length>0);$("gallery").innerHTML="";for(let p of list){let{data,error}=await S.storage.from(B).createSignedUrl(p.storage_path,3600);if(error)continue;let d=document.createElement("article");d.innerHTML=`<img src="${data.signedUrl}" alt=""><div><strong>${esc(p.original_name)}</strong><small>${esc(p.category)} · ${bytes(p.size_bytes)}</small><span><button>↗</button><button>↓</button><button>×</button></span></div>`;let bs=d.querySelectorAll("span button");d.querySelector("img").onclick=()=>openLight(data.signedUrl,p.original_name);bs[0].onclick=()=>openLight(data.signedUrl,p.original_name);bs[1].onclick=()=>download(data.signedUrl,p.original_name);bs[2].onclick=()=>del(p);$("gallery").appendChild(d)}}
-async function upload(list){list=[...list].filter(f=>f.type.startsWith("image/"));if(!list.length)return toast("Choose image files only.");$("progress").classList.remove("hide");for(let i=0;i<list.length;i++){let f=list[i],path=`${user.id}/${crypto.randomUUID()}-${f.name.replace(/[^a-zA-Z0-9._-]/g,"_")}`;$("pt").textContent="Uploading "+f.name;$("pp").textContent=Math.round(i/list.length*100)+"%";$("bar").style.width=Math.round(i/list.length*100)+"%";let{error}=await S.storage.from(B).upload(path,f,{contentType:f.type,upsert:false});if(error){toast(error.message);continue}let r=await S.from("photos").insert({user_id:user.id,storage_path:path,original_name:f.name,mime_type:f.type,size_bytes:f.size,category:"Other"});if(r.error){await S.storage.from(B).remove([path]);toast(r.error.message)}}$("bar").style.width="100%";$("pp").textContent="100%";setTimeout(()=>$("progress").classList.add("hide"),500);await load();toast("Upload complete.")}
-async function del(p){if(!confirm("Delete "+p.original_name+"?"))return;let a=await S.storage.from(B).remove([p.storage_path]);if(a.error)return toast(a.error.message);let r=await S.from("photos").delete().eq("id",p.id).eq("user_id",user.id);if(r.error)return toast(r.error.message);await load();toast("Photo deleted.")}
-async function download(u,n){let r=await fetch(u),b=await r.blob(),a=document.createElement("a");a.href=URL.createObjectURL(b);a.download=n;a.click();URL.revokeObjectURL(a.href)}
-function openLight(u,n){$("lightimg").src=u;$("lightname").textContent=n;$("light").classList.remove("hide")}function closeLight(e){if(!e||e.target.id==="light"||e.target.tagName==="BUTTON")$("light").classList.add("hide")}function esc(s){return String(s).replace(/[&<>"']/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"}[m]))}function bytes(n){let u=["B","KB","MB","GB"],i=0;while(n>=1024&&i<3)n/=1024,i++;return n.toFixed(i?1:0)+" "+u[i]}
-$("files").onchange=e=>upload(e.target.files);let z=$("drop");["dragover","dragenter"].forEach(x=>z.addEventListener(x,e=>{e.preventDefault();z.classList.add("drag")}));["dragleave","drop"].forEach(x=>z.addEventListener(x,e=>{e.preventDefault();z.classList.remove("drag")}));z.ondrop=e=>upload(e.dataTransfer.files);
-S.auth.getSession().then(r=>session(r.data.session));S.auth.onAuthStateChange((_e,s)=>session(s));
+async function render(){
+  let q=$("search").value.toLowerCase(),
+      c=$("cat").value;
+
+  let list=photos.filter(p =>
+    (c==="All" || p.category===c) &&
+    p.original_name.toLowerCase().includes(q)
+  );
+
+  $("count").textContent =
+    photos.length+" "+(photos.length===1?"Photo":"Photos");
+
+  $("empty").classList.toggle("hide",list.length>0);
+
+  const gallery=$("gallery");
+
+  // Build everything separately first
+  const fragment=document.createDocumentFragment();
+
+  for(let p of list){
+    let {data,error}=await S.storage
+      .from(B)
+      .createSignedUrl(p.storage_path,3600);
+
+    if(error) continue;
+
+    let d=document.createElement("article");
+
+    d.innerHTML=`
+      <img src="${data.signedUrl}" alt="">
+      <div>
+        <strong>${esc(p.original_name)}</strong>
+        <small>${esc(p.category)} · ${bytes(p.size_bytes)}</small>
+        <span>
+          <button>↗</button>
+          <button>↓</button>
+          <button>×</button>
+        </span>
+      </div>
+    `;
+
+    let bs=d.querySelectorAll("span button");
+
+    d.querySelector("img").onclick=() =>
+      openLight(data.signedUrl,p.original_name);
+
+    bs[0].onclick=() =>
+      openLight(data.signedUrl,p.original_name);
+
+    bs[1].onclick=() =>
+      download(data.signedUrl,p.original_name);
+
+    bs[2].onclick=() =>
+      del(p);
+
+    fragment.appendChild(d);
+  }
+
+  // Replace gallery only once
+  gallery.replaceChildren(fragment);
+}
