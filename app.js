@@ -1,4 +1,5 @@
 const C = window.CLOUD_GALLERY_CONFIG;
+
 const S = window.supabase.createClient(
   C.SUPABASE_URL,
   C.SUPABASE_PUBLISHABLE_KEY
@@ -8,25 +9,34 @@ const B = "photos";
 
 let user = null;
 let photos = [];
+
 let currentUserId = null;
 let loadingPhotos = false;
 let renderToken = 0;
 
 const $ = (id) => document.getElementById(id);
 
+
+/* =========================
+   TOAST
+========================= */
+
 function toast(message) {
   const t = $("toast");
+
   t.textContent = message;
   t.className = "show";
 
   clearTimeout(window.__toastTimer);
+
   window.__toastTimer = setTimeout(() => {
     t.className = "";
   }, 3000);
 }
 
+
 /* =========================
-   AUTH VIEW
+   AUTH VIEWS
 ========================= */
 
 function loginView() {
@@ -47,6 +57,7 @@ function resetView() {
   $("reset").classList.remove("hide");
 }
 
+
 /* =========================
    LOGIN
 ========================= */
@@ -63,15 +74,17 @@ async function login(e) {
   }
 
   const button = e.submitter;
+
   if (button) {
     button.disabled = true;
     button.textContent = "Signing in...";
   }
 
-  const { data, error } = await S.auth.signInWithPassword({
-    email,
-    password
-  });
+  const { data, error } =
+    await S.auth.signInWithPassword({
+      email,
+      password
+    });
 
   if (button) {
     button.disabled = false;
@@ -83,13 +96,14 @@ async function login(e) {
     return;
   }
 
-  if (!data || !data.user) {
+  if (!data?.user) {
     toast("Login failed. Please try again.");
     return;
   }
 
   toast("Welcome back.");
 }
+
 
 /* =========================
    SIGN UP
@@ -118,10 +132,11 @@ async function signup(e) {
     button.textContent = "Creating...";
   }
 
-  const { data, error } = await S.auth.signUp({
-    email,
-    password
-  });
+  const { data, error } =
+    await S.auth.signUp({
+      email,
+      password
+    });
 
   if (button) {
     button.disabled = false;
@@ -138,9 +153,13 @@ async function signup(e) {
     return;
   }
 
-  toast("Account created. Check your email to confirm your account.");
+  toast(
+    "Account created. Check your email to confirm your account."
+  );
+
   loginView();
 }
+
 
 /* =========================
    PASSWORD RESET
@@ -163,9 +182,10 @@ async function resetPassword(e) {
     button.textContent = "Sending...";
   }
 
-  const { error } = await S.auth.resetPasswordForEmail(email, {
-    redirectTo: window.location.origin
-  });
+  const { error } =
+    await S.auth.resetPasswordForEmail(email, {
+      redirectTo: window.location.origin
+    });
 
   if (button) {
     button.disabled = false;
@@ -178,15 +198,18 @@ async function resetPassword(e) {
   }
 
   toast("Password reset email sent.");
+
   loginView();
 }
+
 
 /* =========================
    LOGOUT
 ========================= */
 
 async function logout() {
-  const { error } = await S.auth.signOut();
+  const { error } =
+    await S.auth.signOut();
 
   if (error) {
     toast(error.message);
@@ -201,20 +224,18 @@ async function logout() {
   $("app").classList.add("hide");
 
   $("gallery").replaceChildren();
+
+  $("count").textContent = "0 Photos";
 }
+
 
 /* =========================
    SESSION
 ========================= */
 
 async function session(sessionData) {
-  const nextUser = sessionData?.user || null;
-
-  /*
-    Prevent duplicate session processing.
-    Supabase can trigger getSession() and onAuthStateChange()
-    close together.
-  */
+  const nextUser =
+    sessionData?.user || null;
 
   if (!nextUser) {
     user = null;
@@ -225,6 +246,7 @@ async function session(sessionData) {
     $("app").classList.add("hide");
 
     $("gallery").replaceChildren();
+
     $("count").textContent = "0 Photos";
 
     return;
@@ -234,16 +256,22 @@ async function session(sessionData) {
 
   $("auth").classList.add("hide");
   $("app").classList.remove("hide");
-  $("email").textContent = user.email || "";
+
+  $("email").textContent =
+    user.email || "";
 
   /*
-    Only load when the actual user changes.
+    Prevent duplicate loading
+    when Supabase fires several auth events.
   */
+
   if (currentUserId !== user.id) {
     currentUserId = user.id;
+
     await load();
   }
 }
+
 
 /* =========================
    LOAD PHOTOS
@@ -252,20 +280,22 @@ async function session(sessionData) {
 async function load() {
   if (!user) return;
 
-  /*
-    Prevent two load() operations
-    from running at the same time.
-  */
   if (loadingPhotos) return;
 
   loadingPhotos = true;
 
   try {
-    const { data, error } = await S
+
+    const {
+      data,
+      error
+    } = await S
       .from("photos")
       .select("*")
       .eq("user_id", user.id)
-      .order("created_at", { ascending: false });
+      .order("created_at", {
+        ascending: false
+      });
 
     if (error) {
       toast(error.message);
@@ -273,220 +303,418 @@ async function load() {
     }
 
     /*
-      Extra protection against duplicate database rows
-      appearing in the UI.
+      Remove duplicate database IDs
+      before displaying.
     */
+
     const unique = new Map();
 
     for (const photo of data || []) {
+
       if (!unique.has(photo.id)) {
         unique.set(photo.id, photo);
       }
+
     }
 
-    photos = Array.from(unique.values());
+    photos =
+      Array.from(unique.values());
 
     await render();
+
   } finally {
+
     loadingPhotos = false;
+
   }
 }
+
 
 /* =========================
    RENDER GALLERY
 ========================= */
 
 async function render() {
+
   const myToken = ++renderToken;
 
   if (!user) return;
 
-  const searchInput = $("search");
-  const categoryInput = $("cat");
+  const search =
+    ($("search")?.value || "")
+      .toLowerCase()
+      .trim();
 
-  const q = (searchInput?.value || "").toLowerCase().trim();
-  const category = categoryInput?.value || "All";
+  const category =
+    $("cat")?.value || "All";
 
-  const list = photos.filter((p) => {
-    const name = String(p.original_name || "").toLowerCase();
+
+  const list = photos.filter((photo) => {
+
+    const name =
+      String(
+        photo.original_name || ""
+      ).toLowerCase();
+
 
     const categoryMatch =
-      category === "All" || p.category === category;
+      category === "All" ||
+      photo.category === category;
+
 
     const searchMatch =
-      !q || name.includes(q);
+      !search ||
+      name.includes(search);
 
-    return categoryMatch && searchMatch;
+
+    return (
+      categoryMatch &&
+      searchMatch
+    );
+
   });
+
 
   $("count").textContent =
     photos.length +
     " " +
-    (photos.length === 1 ? "Photo" : "Photos");
+    (
+      photos.length === 1
+        ? "Photo"
+        : "Photos"
+    );
 
-  $("empty").classList.toggle("hide", list.length > 0);
 
-  /*
-    Create everything first.
-    We don't append individual cards directly to the live gallery
-    while signed URLs are loading.
-  */
-
-  const fragment = document.createDocumentFragment();
-
-  const cards = await Promise.all(
-    list.map(async (p) => {
-      const { data, error } = await S
-        .storage
-        .from(B)
-        .createSignedUrl(p.storage_path, 3600);
-
-      if (error || !data?.signedUrl) {
-        return null;
-      }
-
-      const article = document.createElement("article");
-
-      article.innerHTML = `
-        <img src="${esc(data.signedUrl)}" alt="">
-        <div>
-          <strong>${esc(p.original_name)}</strong>
-          <small>
-            ${esc(p.category)} · ${bytes(p.size_bytes)}
-          </small>
-          <span>
-            <button type="button">↗</button>
-            <button type="button">↓</button>
-            <button type="button">×</button>
-          </span>
-        </div>
-      `;
-
-      const image = article.querySelector("img");
-      const buttons = article.querySelectorAll("span button");
-
-      image.onclick = () =>
-        openLight(data.signedUrl, p.original_name);
-
-      buttons[0].onclick = () =>
-        openLight(data.signedUrl, p.original_name);
-
-      buttons[1].onclick = () =>
-        download(data.signedUrl, p.original_name);
-
-      buttons[2].onclick = () =>
-        del(p);
-
-      return article;
-    })
+  $("empty").classList.toggle(
+    "hide",
+    list.length > 0
   );
 
+
   /*
-    If another render started while this one was working,
-    ignore this old render.
+    Build all cards first.
   */
 
-  if (myToken !== renderToken) return;
+  const fragment =
+    document.createDocumentFragment();
+
+
+  const cards =
+    await Promise.all(
+
+      list.map(async (photo) => {
+
+        const {
+          data,
+          error
+        } = await S.storage
+          .from(B)
+          .createSignedUrl(
+            photo.storage_path,
+            3600
+          );
+
+
+        if (
+          error ||
+          !data?.signedUrl
+        ) {
+          return null;
+        }
+
+
+        const article =
+          document.createElement(
+            "article"
+          );
+
+
+        article.innerHTML = `
+          <img
+            src="${esc(data.signedUrl)}"
+            alt="${esc(photo.original_name)}"
+          >
+
+          <div>
+
+            <strong>
+              ${esc(photo.original_name)}
+            </strong>
+
+            <small>
+              ${esc(photo.category)}
+              ·
+              ${bytes(photo.size_bytes)}
+            </small>
+
+            <span>
+
+              <button
+                type="button"
+                title="Preview"
+              >
+                ↗
+              </button>
+
+              <button
+                type="button"
+                title="Download"
+              >
+                ↓
+              </button>
+
+              <button
+                type="button"
+                title="Delete"
+              >
+                ×
+              </button>
+
+            </span>
+
+          </div>
+        `;
+
+
+        const image =
+          article.querySelector("img");
+
+
+        const buttons =
+          article.querySelectorAll(
+            "span button"
+          );
+
+
+        image.onclick = () =>
+          openLight(
+            data.signedUrl,
+            photo.original_name
+          );
+
+
+        buttons[0].onclick = () =>
+          openLight(
+            data.signedUrl,
+            photo.original_name
+          );
+
+
+        buttons[1].onclick = () =>
+          download(
+            data.signedUrl,
+            photo.original_name
+          );
+
+
+        buttons[2].onclick = () =>
+          del(photo);
+
+
+        return article;
+
+      })
+
+    );
+
+
+  /*
+    Ignore an old render if a newer
+    render has already started.
+  */
+
+  if (myToken !== renderToken) {
+    return;
+  }
+
 
   for (const card of cards) {
+
     if (card) {
       fragment.appendChild(card);
     }
+
   }
 
-  /*
-    Replace the gallery only once.
-    This prevents duplicate cards.
-  */
 
-  $("gallery").replaceChildren(fragment);
+  $("gallery").replaceChildren(
+    fragment
+  );
 }
+
 
 /* =========================
    UPLOAD
 ========================= */
 
 async function upload(list) {
+
   if (!user) {
     toast("Please sign in first.");
     return;
   }
 
-  list = [...list].filter((file) =>
-    file.type.startsWith("image/")
+
+  list = [...list].filter(
+    (file) =>
+      file.type.startsWith("image/")
   );
+
 
   if (!list.length) {
     toast("Choose image files only.");
     return;
   }
 
-  $("progress").classList.remove("hide");
+
+  /*
+    Get the category selected by user.
+  */
+
+  const category =
+    $("uploadCategory").value;
+
+
+  /*
+    Safety check.
+  */
+
+  const validCategories = [
+    "Family",
+    "Work",
+    "Other"
+  ];
+
+
+  if (
+    !validCategories.includes(
+      category
+    )
+  ) {
+    toast("Choose a valid category.");
+    return;
+  }
+
+
+  $("progress")
+    .classList
+    .remove("hide");
+
 
   let successful = 0;
 
+
   try {
-    for (let i = 0; i < list.length; i++) {
+
+    for (
+      let i = 0;
+      i < list.length;
+      i++
+    ) {
+
       const file = list[i];
 
-      const percentBefore = Math.round(
-        (i / list.length) * 100
-      );
+
+      const percentBefore =
+        Math.round(
+          (i / list.length) * 100
+        );
+
 
       $("pt").textContent =
-        "Uploading " + file.name;
+        "Uploading " +
+        file.name;
+
 
       $("pp").textContent =
         percentBefore + "%";
 
+
       $("bar").style.width =
         percentBefore + "%";
 
-      const safeName = file.name.replace(
-        /[^a-zA-Z0-9._-]/g,
-        "_"
-      );
+
+      const safeName =
+        file.name.replace(
+          /[^a-zA-Z0-9._-]/g,
+          "_"
+        );
+
 
       const path =
         `${user.id}/${crypto.randomUUID()}-${safeName}`;
 
-      const { error: uploadError } =
-        await S.storage
-          .from(B)
-          .upload(path, file, {
+
+      /*
+        Upload image to Supabase Storage.
+      */
+
+      const {
+        error: uploadError
+      } = await S.storage
+        .from(B)
+        .upload(
+          path,
+          file,
+          {
             contentType: file.type,
             upsert: false
-          });
+          }
+        );
+
 
       if (uploadError) {
+
         toast(
           "Upload failed: " +
           uploadError.message
         );
+
         continue;
       }
 
-      const { error: dbError } =
-        await S
-          .from("photos")
-          .insert({
-            user_id: user.id,
-            storage_path: path,
-            original_name: file.name,
-            mime_type: file.type,
-            size_bytes: file.size,
-            category: "Other"
-          });
+
+      /*
+        Save photo information
+        including selected category.
+      */
+
+      const {
+        error: dbError
+      } = await S
+        .from("photos")
+        .insert({
+
+          user_id: user.id,
+
+          storage_path: path,
+
+          original_name:
+            file.name,
+
+          mime_type:
+            file.type,
+
+          size_bytes:
+            file.size,
+
+          category:
+            category
+
+        });
+
+
+      /*
+        If database insert fails,
+        remove the storage file.
+      */
 
       if (dbError) {
-        /*
-          If database insert fails,
-          remove the uploaded storage object.
-        */
 
         await S.storage
           .from(B)
           .remove([path]);
+
 
         toast(
           "Database error: " +
@@ -496,132 +724,254 @@ async function upload(list) {
         continue;
       }
 
+
       successful++;
+
     }
 
-    $("bar").style.width = "100%";
-    $("pp").textContent = "100%";
+
+    $("bar").style.width =
+      "100%";
+
+    $("pp").textContent =
+      "100%";
+
+
+    /*
+      Reload gallery.
+    */
 
     await load();
 
+
     if (successful > 0) {
+
       toast(
         successful === 1
-          ? "Photo uploaded successfully."
-          : successful + " photos uploaded successfully."
+          ? `1 photo uploaded to ${category}.`
+          : `${successful} photos uploaded to ${category}.`
       );
+
     }
+
+
   } finally {
+
     setTimeout(() => {
-      $("progress").classList.add("hide");
+
+      $("progress")
+        .classList
+        .add("hide");
+
     }, 500);
+
   }
 }
+
 
 /* =========================
    DELETE
 ========================= */
 
-async function del(p) {
+async function del(photo) {
+
   if (!user) return;
 
-  const confirmed = confirm(
-    "Delete " + p.original_name + "?"
-  );
 
-  if (!confirmed) return;
+  const confirmed =
+    confirm(
+      "Delete " +
+      photo.original_name +
+      "?"
+    );
 
-  const { error: storageError } =
-    await S.storage
-      .from(B)
-      .remove([p.storage_path]);
+
+  if (!confirmed) {
+    return;
+  }
+
+
+  /*
+    Delete from Storage first.
+  */
+
+  const {
+    error: storageError
+  } = await S.storage
+    .from(B)
+    .remove([
+      photo.storage_path
+    ]);
+
 
   if (storageError) {
-    toast(storageError.message);
+
+    toast(
+      storageError.message
+    );
+
     return;
   }
 
-  const { error: dbError } =
-    await S
-      .from("photos")
-      .delete()
-      .eq("id", p.id)
-      .eq("user_id", user.id);
+
+  /*
+    Delete database record.
+  */
+
+  const {
+    error: dbError
+  } = await S
+    .from("photos")
+    .delete()
+    .eq("id", photo.id)
+    .eq("user_id", user.id);
+
 
   if (dbError) {
-    toast(dbError.message);
+
+    toast(
+      dbError.message
+    );
+
     return;
   }
 
-  photos = photos.filter(
-    (item) => item.id !== p.id
-  );
+
+  /*
+    Remove locally first
+    for faster UI.
+  */
+
+  photos =
+    photos.filter(
+      (item) =>
+        item.id !== photo.id
+    );
+
 
   await render();
 
   toast("Photo deleted.");
 }
 
+
 /* =========================
    DOWNLOAD
 ========================= */
 
-async function download(url, name) {
+async function download(
+  url,
+  name
+) {
+
   try {
-    const response = await fetch(url);
+
+    const response =
+      await fetch(url);
+
 
     if (!response.ok) {
-      throw new Error("Download failed.");
+      throw new Error(
+        "Download failed."
+      );
     }
 
-    const blob = await response.blob();
+
+    const blob =
+      await response.blob();
+
 
     const objectUrl =
       URL.createObjectURL(blob);
 
-    const a = document.createElement("a");
 
-    a.href = objectUrl;
-    a.download = name;
+    const a =
+      document.createElement("a");
+
+
+    a.href =
+      objectUrl;
+
+
+    a.download =
+      name;
+
 
     document.body.appendChild(a);
+
     a.click();
+
     a.remove();
 
+
     setTimeout(() => {
-      URL.revokeObjectURL(objectUrl);
+
+      URL.revokeObjectURL(
+        objectUrl
+      );
+
     }, 1000);
+
+
   } catch (error) {
-    toast(error.message);
+
+    toast(
+      error.message
+    );
+
   }
 }
+
 
 /* =========================
    LIGHTBOX
 ========================= */
 
-function openLight(url, name) {
-  $("lightimg").src = url;
-  $("lightname").textContent = name;
-  $("light").classList.remove("hide");
+function openLight(
+  url,
+  name
+) {
+
+  $("lightimg").src =
+    url;
+
+  $("lightimg").alt =
+    name;
+
+  $("lightname").textContent =
+    name;
+
+  $("light")
+    .classList
+    .remove("hide");
 }
 
+
 function closeLight(e) {
+
   if (
     !e ||
     e.target.id === "light" ||
     e.target.tagName === "BUTTON"
   ) {
-    $("light").classList.add("hide");
+
+    $("light")
+      .classList
+      .add("hide");
+
   }
 }
+
 
 /* =========================
    HELPERS
 ========================= */
 
 function esc(value) {
-  return String(value ?? "").replace(
+
+  return String(
+    value ?? ""
+  ).replace(
     /[&<>"']/g,
     (m) => ({
       "&": "&amp;",
@@ -631,10 +981,15 @@ function esc(value) {
       "'": "&#039;"
     }[m])
   );
+
 }
 
-function bytes(n) {
-  n = Number(n) || 0;
+
+function bytes(value) {
+
+  let n =
+    Number(value) || 0;
+
 
   const units = [
     "B",
@@ -643,109 +998,171 @@ function bytes(n) {
     "GB"
   ];
 
+
   let i = 0;
+
 
   while (
     n >= 1024 &&
     i < units.length - 1
   ) {
+
     n /= 1024;
     i++;
+
   }
 
+
   return (
-    n.toFixed(i ? 1 : 0) +
+    n.toFixed(
+      i ? 1 : 0
+    ) +
     " " +
     units[i]
   );
+
 }
+
 
 /* =========================
    FILE INPUT
 ========================= */
 
 $("files").onchange = (e) => {
-  upload(e.target.files);
+
+  upload(
+    e.target.files
+  );
+
 
   /*
-    Allow selecting the same file again later.
+    Allows the same photo
+    to be selected again.
   */
+
   e.target.value = "";
+
 };
+
 
 /* =========================
    DRAG & DROP
 ========================= */
 
-const drop = $("drop");
+const drop =
+  $("drop");
 
-["dragover", "dragenter"].forEach(
+
+[
+  "dragover",
+  "dragenter"
+].forEach(
   (eventName) => {
+
     drop.addEventListener(
       eventName,
       (e) => {
+
         e.preventDefault();
-        drop.classList.add("drag");
+
+        drop.classList.add(
+          "drag"
+        );
+
       }
     );
+
   }
 );
 
-["dragleave", "drop"].forEach(
+
+[
+  "dragleave",
+  "drop"
+].forEach(
   (eventName) => {
+
     drop.addEventListener(
       eventName,
       (e) => {
+
         e.preventDefault();
-        drop.classList.remove("drag");
+
+        drop.classList.remove(
+          "drag"
+        );
+
       }
     );
+
   }
 );
+
 
 drop.ondrop = (e) => {
-  upload(e.dataTransfer.files);
+
+  upload(
+    e.dataTransfer.files
+  );
+
 };
 
-/* =========================
-   SUPABASE AUTH START
-========================= */
 
-/*
-  Listen for authentication changes first.
-*/
+/* =========================
+   AUTH STATE
+========================= */
 
 S.auth.onAuthStateChange(
   (_event, sessionData) => {
-    /*
-      Don't await directly inside Supabase's callback.
-      Run it safely after the auth event.
-    */
 
     Promise.resolve()
-      .then(() => session(sessionData))
+      .then(() =>
+        session(sessionData)
+      )
       .catch((error) => {
+
         console.error(error);
-        toast("Authentication error.");
+
+        toast(
+          "Authentication error."
+        );
+
       });
+
   }
 );
 
-/*
-  Then check the current session.
-*/
+
+/* =========================
+   INITIAL SESSION
+========================= */
 
 S.auth
   .getSession()
-  .then(({ data, error }) => {
-    if (error) {
-      toast(error.message);
-      return;
-    }
+  .then(
+    ({ data, error }) => {
 
-    return session(data.session);
-  })
+      if (error) {
+
+        toast(
+          error.message
+        );
+
+        return;
+      }
+
+      return session(
+        data.session
+      );
+
+    }
+  )
   .catch((error) => {
+
     console.error(error);
-    toast("Unable to check your session.");
+
+    toast(
+      "Unable to check your session."
+    );
+
   });
