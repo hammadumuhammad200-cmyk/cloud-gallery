@@ -19,8 +19,13 @@ let renderToken = 0;
 
 const $ = (id) => document.getElementById(id);
 
+// ============================================================
+// TOAST
+// ============================================================
+
 function toast(message) {
   const t = $("toast");
+
   t.textContent = message;
   t.className = "show";
 
@@ -30,6 +35,10 @@ function toast(message) {
     t.className = "";
   }, 3000);
 }
+
+// ============================================================
+// AUTH VIEWS
+// ============================================================
 
 function loginView() {
   $("login").classList.remove("hide");
@@ -48,6 +57,10 @@ function resetView() {
   $("signup").classList.add("hide");
   $("reset").classList.remove("hide");
 }
+
+// ============================================================
+// LOGIN
+// ============================================================
 
 async function login(e) {
   e.preventDefault();
@@ -87,6 +100,10 @@ async function login(e) {
 
   toast("Welcome back.");
 }
+
+// ============================================================
+// SIGNUP
+// ============================================================
 
 async function signup(e) {
   e.preventDefault();
@@ -138,6 +155,10 @@ async function signup(e) {
   loginView();
 }
 
+// ============================================================
+// RESET PASSWORD
+// ============================================================
+
 async function resetPassword(e) {
   e.preventDefault();
 
@@ -176,6 +197,10 @@ async function resetPassword(e) {
   loginView();
 }
 
+// ============================================================
+// LOGOUT
+// ============================================================
+
 async function logout() {
   const { error } =
     await S.auth.signOut();
@@ -197,6 +222,10 @@ async function logout() {
 
   updateStorageUsage();
 }
+
+// ============================================================
+// AUTH SESSION
+// ============================================================
 
 async function session(sessionData) {
   const nextUser =
@@ -232,6 +261,71 @@ async function session(sessionData) {
     await load();
   }
 }
+
+// ============================================================
+// GET CURRENT ACCESS TOKEN
+// ============================================================
+
+async function getAccessToken() {
+  const {
+    data,
+    error
+  } = await S.auth.getSession();
+
+  if (error) {
+    throw new Error(
+      error.message ||
+      "Unable to get your session."
+    );
+  }
+
+  const accessToken =
+    data?.session?.access_token;
+
+  if (!accessToken) {
+    throw new Error(
+      "Your login session has expired. Please sign in again."
+    );
+  }
+
+  return accessToken;
+}
+
+// ============================================================
+// SECURE FUNCTION REQUEST
+// ============================================================
+
+async function secureFunction(body) {
+  const accessToken =
+    await getAccessToken();
+
+  const {
+    data,
+    error
+  } = await S.functions.invoke(
+    SECURE_UPLOAD_FUNCTION,
+    {
+      headers: {
+        Authorization:
+          `Bearer ${accessToken}`
+      },
+      body
+    }
+  );
+
+  if (error) {
+    throw new Error(
+      error.message ||
+      "Secure upload request failed."
+    );
+  }
+
+  return data;
+}
+
+// ============================================================
+// LOAD PHOTOS
+// ============================================================
 
 async function load() {
   if (!user || loadingPhotos) return;
@@ -273,6 +367,10 @@ async function load() {
     loadingPhotos = false;
   }
 }
+
+// ============================================================
+// STORAGE USAGE
+// ============================================================
 
 function updateStorageUsage() {
   const used = photos.reduce(
@@ -317,6 +415,10 @@ function updateStorageUsage() {
       "Your uploaded photo storage";
   }
 }
+
+// ============================================================
+// RENDER GALLERY
+// ============================================================
 
 async function render() {
   const myToken = ++renderToken;
@@ -516,7 +618,10 @@ async function upload(list) {
     );
   }
 
+  // ----------------------------------------------------------
   // Check individual file size
+  // ----------------------------------------------------------
+
   const oversized =
     list.find(
       (file) =>
@@ -526,6 +631,19 @@ async function upload(list) {
   if (oversized) {
     return toast(
       `${oversized.name} is larger than 50 MB.`
+    );
+  }
+
+  // ----------------------------------------------------------
+  // Make sure session exists before starting
+  // ----------------------------------------------------------
+
+  try {
+    await getAccessToken();
+  } catch (error) {
+    return toast(
+      error.message ||
+      "Please sign in again."
     );
   }
 
@@ -561,32 +679,18 @@ async function upload(list) {
       let path = null;
 
       try {
-        // ------------------------------------------------------
-        // STEP 1: Ask secure-upload to reserve quota
-        // ------------------------------------------------------
+        // ======================================================
+        // STEP 1 — PREPARE
+        // ======================================================
 
-        const {
-          data: prepareData,
-          error: prepareError
-        } = await S.functions.invoke(
-          SECURE_UPLOAD_FUNCTION,
-          {
-            body: {
-              action: "prepare",
-              fileName: file.name,
-              fileSize: file.size,
-              mimeType: file.type,
-              category
-            }
-          }
-        );
-
-        if (prepareError) {
-          throw new Error(
-            prepareError.message ||
-            "Unable to prepare upload."
-          );
-        }
+        const prepareData =
+          await secureFunction({
+            action: "prepare",
+            fileName: file.name,
+            fileSize: file.size,
+            mimeType: file.type,
+            category
+          });
 
         if (
           !prepareData?.success ||
@@ -606,9 +710,9 @@ async function upload(list) {
         path =
           prepareData.path;
 
-        // ------------------------------------------------------
-        // STEP 2: Upload using signed upload URL
-        // ------------------------------------------------------
+        // ======================================================
+        // STEP 2 — SIGNED UPLOAD
+        // ======================================================
 
         $("pt").textContent =
           `Uploading ${file.name}`;
@@ -636,9 +740,9 @@ async function upload(list) {
           );
         }
 
-        // ------------------------------------------------------
-        // STEP 3: Finalize and verify upload
-        // ------------------------------------------------------
+        // ======================================================
+        // STEP 3 — FINALIZE
+        // ======================================================
 
         $("pt").textContent =
           `Verifying ${file.name}`;
@@ -649,29 +753,15 @@ async function upload(list) {
         $("bar").style.width =
           "90%";
 
-        const {
-          data: finalizeData,
-          error: finalizeError
-        } = await S.functions.invoke(
-          SECURE_UPLOAD_FUNCTION,
-          {
-            body: {
-              action: "finalize",
-              reservationId,
-              path,
-              originalName: file.name,
-              mimeType: file.type,
-              category
-            }
-          }
-        );
-
-        if (finalizeError) {
-          throw new Error(
-            finalizeError.message ||
-            "Unable to finalize upload."
-          );
-        }
+        const finalizeData =
+          await secureFunction({
+            action: "finalize",
+            reservationId,
+            path,
+            originalName: file.name,
+            mimeType: file.type,
+            category
+          });
 
         if (
           !finalizeData?.success
@@ -683,31 +773,27 @@ async function upload(list) {
         }
 
         successful++;
+
       } catch (error) {
         console.error(
           "Upload error:",
           error
         );
 
-        // ------------------------------------------------------
+        // ======================================================
         // CANCEL / CLEANUP
-        // ------------------------------------------------------
+        // ======================================================
 
         if (
           reservationId &&
           path
         ) {
           try {
-            await S.functions.invoke(
-              SECURE_UPLOAD_FUNCTION,
-              {
-                body: {
-                  action: "cancel",
-                  reservationId,
-                  path
-                }
-              }
-            );
+            await secureFunction({
+              action: "cancel",
+              reservationId,
+              path
+            });
           } catch (
             cancelError
           ) {
@@ -742,6 +828,10 @@ async function upload(list) {
         `${completedPercent}%`;
     }
 
+    // ========================================================
+    // COMPLETE
+    // ========================================================
+
     $("bar").style.width =
       "100%";
 
@@ -751,7 +841,6 @@ async function upload(list) {
     $("pt").textContent =
       "Upload complete";
 
-    // Reload photos from database
     await load();
 
     if (successful > 0) {
@@ -761,6 +850,7 @@ async function upload(list) {
           : `${successful} photos uploaded to ${category}.`
       );
     }
+
   } finally {
     setTimeout(() => {
       $("progress").classList.add(
