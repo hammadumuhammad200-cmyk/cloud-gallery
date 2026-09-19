@@ -297,10 +297,15 @@ async function getAccessToken() {
 
 async function secureFunction(body) {
   const {
-    data: {
-      session
-    }
+    data: { session },
+    error: sessionError
   } = await S.auth.getSession();
+
+  if (sessionError) {
+    throw new Error(
+      sessionError.message || "Unable to get login session."
+    );
+  }
 
   if (!session?.access_token) {
     throw new Error(
@@ -316,7 +321,8 @@ async function secureFunction(body) {
       headers: {
         "Content-Type": "application/json",
         "apikey": C.SUPABASE_PUBLISHABLE_KEY,
-        "Authorization": `Bearer ${session.access_token}`
+        "Authorization": `Bearer ${session.access_token}`,
+        "x-client-info": "cloud-gallery-web"
       },
 
       body: JSON.stringify(body)
@@ -349,7 +355,6 @@ async function secureFunction(body) {
 
   return data;
 }
-
 // ============================================================
 // LOAD PHOTOS
 // ============================================================
