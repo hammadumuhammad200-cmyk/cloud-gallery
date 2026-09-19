@@ -1,0 +1,1 @@
+window.CLOUD_GALLERY_CONFIG={SUPABASE_URL:"https://qdgfkpubfsymajpquhig.supabase.co",SUPABASE_PUBLISHABLE_KEY:"sb_publishable_J8Uq_BiFeY0njRfl_AUzzg_W7m8GT67"};
