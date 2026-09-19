@@ -296,27 +296,54 @@ async function getAccessToken() {
 // ============================================================
 
 async function secureFunction(body) {
-  const accessToken =
-    await getAccessToken();
-
   const {
-    data,
-    error
-  } = await S.functions.invoke(
-    SECURE_UPLOAD_FUNCTION,
+    data: {
+      session
+    }
+  } = await S.auth.getSession();
+
+  if (!session?.access_token) {
+    throw new Error(
+      "Your login session has expired. Please sign in again."
+    );
+  }
+
+  const response = await fetch(
+    `${C.SUPABASE_URL}/functions/v1/${SECURE_UPLOAD_FUNCTION}`,
     {
+      method: "POST",
+
       headers: {
-        Authorization:
-          `Bearer ${accessToken}`
+        "Content-Type": "application/json",
+        "apikey": C.SUPABASE_PUBLISHABLE_KEY,
+        "Authorization": `Bearer ${session.access_token}`
       },
-      body
+
+      body: JSON.stringify(body)
     }
   );
 
-  if (error) {
+  const text = await response.text();
+
+  let data = {};
+
+  try {
+    data = text
+      ? JSON.parse(text)
+      : {};
+  } catch {
+    data = {
+      success: false,
+      error:
+        text ||
+        "Invalid server response."
+    };
+  }
+
+  if (!response.ok) {
     throw new Error(
-      error.message ||
-      "Secure upload request failed."
+      data?.error ||
+      `Secure upload request failed (${response.status}).`
     );
   }
 
