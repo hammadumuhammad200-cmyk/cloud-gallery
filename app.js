@@ -296,24 +296,31 @@ async function getAccessToken() {
 // ============================================================
 
 async function secureFunction(body) {
-  const {
-    data: { session },
-    error: sessionError
-  } = await S.auth.getSession();
+const {
+  data: { session },
+  error: sessionError
+} = await S.auth.getSession();
 
-  if (sessionError) {
-    throw new Error(
-      sessionError.message || "Unable to get login session."
-    );
-  }
+if (sessionError) {
+  throw new Error(
+    sessionError.message || "Unable to get login session."
+  );
+}
 
-  if (!session?.access_token) {
-    throw new Error(
-      "Your login session has expired. Please sign in again."
-    );
-  }
+if (!session?.access_token) {
+  throw new Error(
+    "Your login session has expired. Please sign in again."
+  );
+}
 
-  const response = await fetch(
+console.log("CLOUD GALLERY AUTH DEBUG:", {
+  hasSession: !!session,
+  hasAccessToken: !!session?.access_token,
+  tokenLength: session?.access_token?.length || 0,
+  userId: session?.user?.id || null
+});
+
+const response = await fetch(
     `${C.SUPABASE_URL}/functions/v1/${SECURE_UPLOAD_FUNCTION}`,
     {
       method: "POST",
