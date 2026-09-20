@@ -773,10 +773,18 @@ async function upload(list) {
           );
 
         if (uploadError) {
-          throw new Error(
-            uploadError.message ||
-            "Secure upload failed."
-          );
+  console.error("SIGNED UPLOAD ERROR:", {
+    message: uploadError.message,
+    name: uploadError.name,
+    status: uploadError.status,
+    cause: uploadError.cause
+  });
+
+  throw new Error(
+    `Signed upload failed: ${
+      uploadError.message || "Unknown storage error"
+    }`
+  );
         }
 
         // ======================================================
